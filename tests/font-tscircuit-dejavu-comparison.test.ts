@@ -6,16 +6,16 @@ import * as opentype from "opentype.js"
 
 import { svgAlphabet } from "../index"
 
-const ARIAL_PATHS = [
-  "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf",
-  "/usr/share/fonts/truetype/msttcorefonts/arial.ttf",
-  "/usr/share/fonts/truetype/microsoft/Arial.ttf",
-  "/Library/Fonts/Arial.ttf",
-  "C:\\Windows\\Fonts\\Arial.ttf",
+const DEJAVU_PATHS = [
+  "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
+  "/Library/Fonts/DejaVuSansMono.ttf",
+  "C:\\Windows\\Fonts\\DejaVuSansMono.ttf",
 ]
 
-const findArialPath = (): string | null => {
-  for (const path of ARIAL_PATHS) {
+const findDejaVuPath = (): string | null => {
+  for (const path of DEJAVU_PATHS) {
     if (existsSync(path)) {
       return path
     }
@@ -38,10 +38,10 @@ const getGlyphHeight = (font: opentype.Font, char: string): number => {
   return Number.isFinite(height) && height > 0 ? height : 0
 }
 
-test("renders glyph ratios vs Arial", async () => {
-  const arialPath = findArialPath()
-  if (!arialPath) {
-    console.warn("Arial font not found; skipping comparison test.")
+test("renders glyph ratios vs DejaVu Sans Mono", async () => {
+  const dejavuPath = findDejaVuPath()
+  if (!dejavuPath) {
+    console.warn("DejaVu Sans Mono font not found; skipping comparison test.")
     return
   }
 
@@ -51,7 +51,7 @@ test("renders glyph ratios vs Arial", async () => {
   }
 
   const ourFont = opentype.loadSync(fontPath)
-  const arialFont = opentype.loadSync(arialPath)
+  const dejavuFont = opentype.loadSync(dejavuPath)
 
   const characters = Object.keys(svgAlphabet).sort()
   const fontSize = 72
@@ -63,10 +63,11 @@ test("renders glyph ratios vs Arial", async () => {
 
   const rows = characters.map((char) => {
     const ourHeight = getGlyphHeight(ourFont, char)
-    const arialHeight = getGlyphHeight(arialFont, char)
-    const arialHeightScaled =
-      arialHeight * (ourFont.unitsPerEm / arialFont.unitsPerEm)
-    const ratio = arialHeightScaled > 0 ? ourHeight / arialHeightScaled : null
+    const referenceHeight = getGlyphHeight(dejavuFont, char)
+    const referenceHeightScaled =
+      referenceHeight * (ourFont.unitsPerEm / dejavuFont.unitsPerEm)
+    const ratio =
+      referenceHeightScaled > 0 ? ourHeight / referenceHeightScaled : null
     return {
       char,
       ratio,
@@ -87,10 +88,10 @@ test("renders glyph ratios vs Arial", async () => {
   <text x="${xOur}" y="${y}" font-family="TscircuitAlphabet" font-size="${fontSize}" fill="black">${escapeXml(
     row.char,
   )}</text>
-  <text x="${xLib}" y="${y}" font-family="Arial" font-size="${fontSize}" fill="black">${escapeXml(
+  <text x="${xLib}" y="${y}" font-family="DejaVu Sans Mono" font-size="${fontSize}" fill="black">${escapeXml(
     row.char,
   )}</text>
-  <text x="${xRatio}" y="${y}" font-family="Arial" font-size="${ratioFontSize}" fill="black">${
+  <text x="${xRatio}" y="${y}" font-family="DejaVu Sans Mono" font-size="${ratioFontSize}" fill="black">${
     row.ratioLabel
   }</text>`
     })
@@ -103,7 +104,7 @@ test("renders glyph ratios vs Arial", async () => {
 
   const resvg = new Resvg(svgString, {
     font: {
-      fontFiles: [fontPath, arialPath],
+      fontFiles: [fontPath, dejavuPath],
       loadSystemFonts: false,
       defaultFontFamily: "TscircuitAlphabet",
     },
@@ -114,17 +115,17 @@ test("renders glyph ratios vs Arial", async () => {
 
   const snapshotDir = join(process.cwd(), "tests", "__snapshots__")
   mkdirSync(snapshotDir, { recursive: true })
-  const pngPath = join(snapshotDir, "font-arial-comparison.png")
+  const pngPath = join(snapshotDir, "font-dejavu-comparison.png")
   writeFileSync(pngPath, pngBuffer)
 
   expect(pngBuffer.length).toBeGreaterThan(1000)
   console.log(`PNG snapshot saved to ${pngPath} (${pngBuffer.length} bytes)`)
 })
 
-test("renders adjacent letter spacing vs Arial", async () => {
-  const arialPath = findArialPath()
-  if (!arialPath) {
-    console.warn("Arial font not found; skipping comparison test.")
+test("renders adjacent letter spacing vs DejaVu Sans Mono", async () => {
+  const dejavuPath = findDejaVuPath()
+  if (!dejavuPath) {
+    console.warn("DejaVu Sans Mono font not found; skipping comparison test.")
     return
   }
 
@@ -134,7 +135,7 @@ test("renders adjacent letter spacing vs Arial", async () => {
   }
 
   const ourFont = opentype.loadSync(fontPath)
-  const arialFont = opentype.loadSync(arialPath)
+  const dejavuFont = opentype.loadSync(dejavuPath)
 
   const fontSize = 120
   const padding = Math.round(fontSize * 0.6)
@@ -145,7 +146,7 @@ test("renders adjacent letter spacing vs Arial", async () => {
 
   const tokens = pairs.flatMap((pair) => [
     { text: pair, fontFamily: "TscircuitAlphabet", font: ourFont },
-    { text: pair, fontFamily: "Arial", font: arialFont },
+    { text: pair, fontFamily: "DejaVu Sans Mono", font: dejavuFont },
   ])
 
   const measureTextWidth = (
@@ -188,7 +189,7 @@ test("renders adjacent letter spacing vs Arial", async () => {
 
   const resvg = new Resvg(svgString, {
     font: {
-      fontFiles: [fontPath, arialPath],
+      fontFiles: [fontPath, dejavuPath],
       loadSystemFonts: false,
       defaultFontFamily: "TscircuitAlphabet",
     },
@@ -199,7 +200,7 @@ test("renders adjacent letter spacing vs Arial", async () => {
 
   const snapshotDir = join(process.cwd(), "tests", "__snapshots__")
   mkdirSync(snapshotDir, { recursive: true })
-  const pngPath = join(snapshotDir, "font-arial-adjacent-comparison.png")
+  const pngPath = join(snapshotDir, "font-dejavu-adjacent-comparison.png")
   writeFileSync(pngPath, pngBuffer)
 
   expect(pngBuffer.length).toBeGreaterThan(1000)

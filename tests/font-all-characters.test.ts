@@ -3,6 +3,8 @@ import { Resvg } from "@resvg/resvg-js"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
+import { getFontMetrics } from "./helpers/get-monospace-width"
+
 test("renders all characters grid", async () => {
   // Multi-line text to show all characters
   const lines = [
@@ -19,9 +21,11 @@ test("renders all characters grid", async () => {
   const fontSize = 60
   const lineHeight = fontSize * 1.8
   const padding = fontSize * 0.9
+  const fontPath = join(process.cwd(), "TscircuitAlphabet.ttf")
+  const { monoWidthRatio, ascenderRatio } = getFontMetrics(fontPath)
   // Calculate width based on longest line using actual monospace width
   const maxLineLength = Math.max(...lines.map((l) => l.length))
-  const width = maxLineLength * fontSize * 1.392 + padding * 2
+  const width = maxLineLength * fontSize * monoWidthRatio + padding * 2
   const height = lineHeight * lines.length + padding * 2
 
   // Escape special XML characters
@@ -39,7 +43,7 @@ test("renders all characters grid", async () => {
     .map(
       (line, i) =>
         `<text x="${padding}" y="${
-          fontSize + padding + i * lineHeight
+          padding + ascenderRatio * fontSize + i * lineHeight
         }" font-family="TscircuitAlphabet" font-size="${fontSize}" fill="black">${escapeXml(
           line,
         )}</text>`,
@@ -47,7 +51,6 @@ test("renders all characters grid", async () => {
     .join("\n  ")}
 </svg>`
 
-  const fontPath = join(process.cwd(), "TscircuitAlphabet.ttf")
   const resvg = new Resvg(svgString, {
     font: {
       fontFiles: [fontPath],
