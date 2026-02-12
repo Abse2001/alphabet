@@ -9,9 +9,7 @@ const UNITS_PER_EM = 1000
 // Match Arial's proportions: ascender at ~90.5% and descender at ~21.2% of em
 const ASCENDER = 940
 const DESCENDER = -212
-const STROKE_WIDTH = 0.1 // Adjust this to make the font thicker or thinner
-const SIDE_BEARING_PERCENT = 0.03 // 3% of glyph width on each side
-const SIDE_BEARING_MIN = 26
+const STROKE_WIDTH = 0.09 // Adjust this to make the font thicker or thinner
 
 interface Point {
   x: number
@@ -241,33 +239,24 @@ for (const [char, pathData] of Object.entries(svgAlphabet)) {
   glyphData.push({ char, codePoint, path, bbox, glyphWidth })
 }
 
-// Proportional spacing: width based on glyph size
-
 // Second pass: create glyphs with fixed monospace width
+// Monospace width equals the widest glyph (no extra padding).
 const glyphs: opentype.Glyph[] = [
   new opentype.Glyph({
     name: ".notdef",
     unicode: 0,
-    advanceWidth: maxGlyphWidth + SIDE_BEARING_MIN * 2,
+    advanceWidth: maxGlyphWidth,
     path: new opentype.Path(),
   }),
 ]
 
 for (const { char, codePoint, path, bbox, glyphWidth } of glyphData) {
-  const sideBearing = Math.max(
-    glyphWidth * SIDE_BEARING_PERCENT,
-    SIDE_BEARING_MIN,
-  )
-  const advanceWidth = glyphWidth + sideBearing * 2
-  const leftSideBearing = sideBearing - bbox.minX * UNITS_PER_EM
-
   glyphs.push(
     new opentype.Glyph({
       name: char,
       unicode: codePoint,
-      advanceWidth,
+      advanceWidth: maxGlyphWidth,
       path,
-      leftSideBearing,
     }),
   )
 }
