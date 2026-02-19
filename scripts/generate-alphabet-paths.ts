@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import * as opentype from "opentype.js"
 
@@ -20,7 +20,12 @@ type ReferenceMetrics = {
   yMax: number
 }
 
+const USER_FONT_DIR = join(process.env.HOME ?? "", "Library/Fonts")
+
 const REFERENCE_FONT_PATHS = [
+  join(USER_FONT_DIR, "DejaVuSansMono.ttf"),
+  join(USER_FONT_DIR, "DejaVuSansMono-Bold.ttf"),
+  join(USER_FONT_DIR, "DejaVuSansMono-Oblique.ttf"),
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
@@ -249,6 +254,51 @@ const serializeSubpaths = (subpaths: Subpath[]): string => {
   return parts.join(" ")
 }
 
+type LineSegment = { x1: number; y1: number; x2: number; y2: number }
+
+const getLineSegments = (pathData: string): LineSegment[] => {
+  const segments: LineSegment[] = []
+  const segs = pathData
+    .split("M")
+    .slice(1)
+    .map((seg) =>
+      seg.split("L").map((pr) => pr.trim().split(" ").map(parseFloat)),
+    )
+
+  for (const seg of segs) {
+    for (let i = 0; i < seg.length - 1; i += 1) {
+      segments.push({
+        x1: seg[i][0],
+        y1: 1 - seg[i][1],
+        x2: seg[i + 1][0],
+        y2: 1 - seg[i + 1][1],
+      })
+    }
+  }
+
+  return segments
+}
+
+const getGlyphWidthRatio = (
+  segments: LineSegment[],
+  strokeWidthRatio: number,
+): number => {
+  if (segments.length === 0) {
+    return 0
+  }
+
+  const radius = strokeWidthRatio / 2
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+
+  for (const segment of segments) {
+    minX = Math.min(minX, segment.x1 - radius, segment.x2 - radius)
+    maxX = Math.max(maxX, segment.x1 + radius, segment.x2 + radius)
+  }
+
+  return maxX - minX
+}
+
 const getMaxYFromSubpaths = (subpaths: Subpath[]): number => {
   let maxY = Number.NEGATIVE_INFINITY
   for (const subpath of subpaths) {
@@ -265,6 +315,15 @@ const shiftSubpathsY = (subpaths: Subpath[], deltaY: number): Subpath[] =>
     points: subpath.points.map((point) => ({
       x: point.x,
       y: point.y + deltaY,
+    })),
+  }))
+
+const shiftSubpathsX = (subpaths: Subpath[], deltaX: number): Subpath[] =>
+  subpaths.map((subpath) => ({
+    closed: subpath.closed,
+    points: subpath.points.map((point) => ({
+      x: point.x + deltaX,
+      y: point.y,
     })),
   }))
 
@@ -393,12 +452,7 @@ for (const [char, pathData] of Object.entries(svgAlphabet)) {
   const xMinScaled = paddedMinX * scaleX
   const xMaxScaled = paddedMaxX * scaleX
   const yMaxScaled = paddedMaxY * scaleY
-  const scaledWidth = xMaxScaled - xMinScaled
-  const targetWidth = 1
-  const xShift =
-    scaledWidth <= targetWidth
-      ? (targetWidth - scaledWidth) / 2 - xMinScaled
-      : -xMinScaled
+  const xShift = -xMinScaled
   const yShift =
     useReferenceSpacing && referenceMetrics
       ? referenceMetrics.yMax / DESIGN_HEIGHT - yMaxScaled
@@ -438,13 +492,112 @@ if (underscorePath && descenderTargetY > 0) {
   }
 }
 
+const glyphWidthRatio = Object.values(generatedAlphabet).reduce(
+  (maxWidth, pathData) =>
+    Math.max(maxWidth, getGlyphWidthRatio(getLineSegments(pathData), 0.09)),
+  0,
+)
+
+for (const [char, pathData] of Object.entries(generatedAlphabet)) {
+  const width = getGlyphWidthRatio(getLineSegments(pathData), 0.09)
+  const centerDeltaX = (glyphWidthRatio - width) / 2
+  if (Math.abs(centerDeltaX) <= 1e-6) {
+    continue
+  }
+  const subpaths = parsePathData(pathData)
+  generatedAlphabet[char] = serializeSubpaths(
+    shiftSubpathsX(subpaths, centerDeltaX),
+  )
+}
+
 const indexPath = join(import.meta.dir, "..", "index.ts")
 const indexContent = readFileSync(indexPath, "utf8")
 const serializedAlphabet = JSON.stringify(generatedAlphabet, null, 2)
-const updatedIndex = indexContent.replace(
+const withUpdatedAlphabet = indexContent.replace(
   /export const svgAlphabet\s*=\s*\{[\s\S]*?\}\n/,
   `export const svgAlphabet = ${serializedAlphabet}\n`,
 )
 
-writeFileSync(indexPath, updatedIndex)
+const strokeWidthRatio = 0.09
+const finalGlyphWidthRatio = Object.values(generatedAlphabet).reduce(
+  (maxWidth, pathData) =>
+    Math.max(
+      maxWidth,
+      getGlyphWidthRatio(getLineSegments(pathData), strokeWidthRatio),
+    ),
+  0,
+)
+const spaceWidthRatio = finalGlyphWidthRatio
+const lineHeightRatio = 0.94 + 0.212
+const letterSpacingRatio = 0
+
+const glyphAdvanceRatio: Record<string, number> = {}
+for (const char of Object.keys(generatedAlphabet)) {
+  glyphAdvanceRatio[char] = Number(formatNumber(finalGlyphWidthRatio))
+}
+glyphAdvanceRatio[" "] = Number(formatNumber(spaceWidthRatio))
+
+const upsertConstExport = (
+  content: string,
+  name: string,
+  value: string,
+): string => {
+  const exportLine = `export const ${name} = ${value}\n`
+  const pattern = new RegExp(
+    `export const ${name} = [\\s\\S]*?(?=\\nexport const |\\n$|$)`,
+  )
+  if (pattern.test(content)) {
+    return content.replace(pattern, exportLine)
+  }
+  return `${content.trimEnd()}\n\n${exportLine}`
+}
+
+let withUpdatedMetrics = withUpdatedAlphabet
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "strokeWidthRatio",
+  formatNumber(strokeWidthRatio),
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "glyphWidthRatio",
+  formatNumber(finalGlyphWidthRatio),
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "spaceWidthRatio",
+  formatNumber(spaceWidthRatio),
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "lineHeightRatio",
+  formatNumber(lineHeightRatio),
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "letterSpacingRatio",
+  formatNumber(letterSpacingRatio),
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "glyphLineAlphabet",
+  "lineAlphabet",
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "glyphAdvanceRatio",
+  `${JSON.stringify(glyphAdvanceRatio)} as Record<string, number>`,
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "kerningRatio",
+  "{} as Record<string, Record<string, number>>",
+)
+withUpdatedMetrics = upsertConstExport(
+  withUpdatedMetrics,
+  "textMetrics",
+  "{ glyphWidthRatio, spaceWidthRatio, lineHeightRatio, strokeWidthRatio, letterSpacingRatio }",
+)
+
+writeFileSync(indexPath, withUpdatedMetrics)
 console.log("✓ generated SVG alphabet paths written to index.ts")
