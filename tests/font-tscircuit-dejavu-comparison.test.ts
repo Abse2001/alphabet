@@ -10,6 +10,14 @@ const DEJAVU_PATHS = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
+  join(process.env.HOME || "", "Library", "Fonts", "DejaVuSansMono.ttf"),
+  join(process.env.HOME || "", "Library", "Fonts", "DejaVuSansMono-Bold.ttf"),
+  join(
+    process.env.HOME || "",
+    "Library",
+    "Fonts",
+    "DejaVuSansMono-Oblique.ttf",
+  ),
   "/Library/Fonts/DejaVuSansMono.ttf",
   "C:\\Windows\\Fonts\\DejaVuSansMono.ttf",
 ]
