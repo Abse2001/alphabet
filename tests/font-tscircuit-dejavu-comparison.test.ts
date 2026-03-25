@@ -39,11 +39,13 @@ const escapeXml = (str: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;")
 
-const getGlyphHeight = (font: opentype.Font, char: string): number => {
+const getGlyphBoundingBox = (font: opentype.Font, char: string) => {
   const glyph = font.charToGlyph(char)
   const bbox = glyph.getBoundingBox()
-  const height = bbox.y2 - bbox.y1
-  return Number.isFinite(height) && height > 0 ? height : 0
+  return {
+    width: Number.isFinite(bbox.x2 - bbox.x1) ? bbox.x2 - bbox.x1 : 0,
+    height: Number.isFinite(bbox.y2 - bbox.y1) ? bbox.y2 - bbox.y1 : 0,
+  }
 }
 
 test("renders glyph ratios vs DejaVu Sans Mono", async () => {
@@ -67,19 +69,24 @@ test("renders glyph ratios vs DejaVu Sans Mono", async () => {
   const padding = Math.round(fontSize * 0.6)
   const columnGap = Math.round(fontSize * 0.6)
   const ratioFontSize = Math.round(fontSize * 0.35)
-  const ratioColumnWidth = ratioFontSize * 6
+  const ratioColumnWidth = ratioFontSize * 12
 
   const rows = characters.map((char) => {
-    const ourHeight = getGlyphHeight(ourFont, char)
-    const referenceHeight = getGlyphHeight(dejavuFont, char)
+    const ourBox = getGlyphBoundingBox(ourFont, char)
+    const referenceBox = getGlyphBoundingBox(dejavuFont, char)
+    const referenceWidthScaled =
+      referenceBox.width * (ourFont.unitsPerEm / dejavuFont.unitsPerEm)
     const referenceHeightScaled =
-      referenceHeight * (ourFont.unitsPerEm / dejavuFont.unitsPerEm)
-    const ratio =
-      referenceHeightScaled > 0 ? ourHeight / referenceHeightScaled : null
+      referenceBox.height * (ourFont.unitsPerEm / dejavuFont.unitsPerEm)
+    const widthRatio =
+      referenceWidthScaled > 0 ? ourBox.width / referenceWidthScaled : null
+    const heightRatio =
+      referenceHeightScaled > 0 ? ourBox.height / referenceHeightScaled : null
     return {
       char,
-      ratio,
-      ratioLabel: ratio === null ? "n/a" : ratio.toFixed(2),
+      ratioLabel: `w:${widthRatio === null ? "n/a" : widthRatio.toFixed(2)} h:${
+        heightRatio === null ? "n/a" : heightRatio.toFixed(2)
+      }`,
     }
   })
 
